@@ -1,56 +1,67 @@
 import requests
 import random
+import re
 
 # 📊 CONFIGURACIÓN DE TU CANAL:
-URL_DISCORD_FNAF = "https://discord.com/api/webhooks/1509203531184214067/nks3JtSmZgkb7qgH08_nxXYFBOrCiFs_9NxcAAcRTNbCxCvASPgdtEuR-DxtXG5-bc-U"
+URL_DISCORD_FNAF = "https://discord.com/api/webhooks/1509203531184214067/nks3JtSmZgkb7qgH08_nxXYFBOrCiFs_9NxcAAcRTNbCxCvASPgdtEuR-DxtXG5-bc-U" # <-- Tu webhook ya está puesto aquí
 
 def cazar_fangames_fnaf():
-    # Buscamos en el catálogo de Game Jolt juegos con la etiqueta fnaf, ordenados por los mejores/populares
-    url = "https://gamejolt.com/site-api/discover/games/fnaf?page=1"
+    # Usamos el Feed RSS público de la comunidad de FNAF en Game Jolt (Es antibloqueos)
+    url = "https://gamejolt.com/feed/tag/fnaf"
     
-    print("🔦 Encendiendo la linterna en los servidores de Game Jolt...")
+    print("🔦 Rastreando transmisiones en el feed de Freddy Fazbear...")
     try:
         respuesta = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
         if respuesta.status_code == 200:
-            datos = respuesta.json()
-            # Extraemos la lista de juegos del catálogo de Game Jolt
-            juegos = datos.get("payload", {}).get("games", {}).get("iterable", [])
+            texto_xml = respuesta.text
             
-            # 🔀 Barajamos el mazo para que cada 3 días sea un juego completamente sorpresa
-            random.shuffle(juegos)
+            # Buscamos los bloques de cada juego/publicación (<item>)
+            items = re.findall(r'<item>(.*?)</item>', texto_xml, re.DOTALL)
+            
+            if not items:
+                print("⚠️ El feed no devolvió publicaciones en este instante.")
+                return
+                
+            # 🔀 Mezclamos las publicaciones para que varíen cada 3 días
+            random.shuffle(items)
             
             embeds = []
             contador = 0
             
-            for juego in juegos:
-                titulo = juego.get("title")
-                resumen = juego.get("header_media_item", {}).get("content_url") or juego.get("img_thumbnail")
-                enlace_slug = juego.get("slug")
-                id_juego = juego.get("id")
-                desarrollador = juego.get("developer", {}).get("name", "Creador Anónimo")
+            for item in items:
+                # Extraemos el título, el enlace y la descripción usando expresiones regulares simples
+                titulo_match = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>', item) or re.search(r'<title>(.*?)</title>', item)
+                enlace_match = re.search(r'<link>(.*?)</link>', item)
+                desc_match = re.search(r'<description><!\[CDATA\[(.*?)\]\]></description>', item) or re.search(r'<description>(.*?)</description>', item)
                 
-                # Intentamos armar una pequeña descripción o usamos una por defecto si viene vacía
-                descripcion = f"Un increíble fangame de FNAF alojado en Game Jolt. Creado por un miembro de la comunidad."
+                titulo = titulo_match.group(1) if titulo_match else "Fangame Misterioso"
+                url_juego = enlace_match.group(1).strip() if enlace_match else "https://gamejolt.com"
+                descripcion_raw = desc_match.group(1) if desc_match else ""
                 
-                if not titulo or not enlace_slug:
-                    continue
-                    
-                # Construimos el enlace real de Game Jolt
-                url_juego = f"https://gamejolt.com/games/{enlace_slug}/{id_juego}"
+                # Limpiamos etiquetas HTML raras que puedan venir en la descripción
+                descripcion = re.sub(r'<[^>]*>', '', descripcion_raw).strip()
+                if len(descripcion) > 150:
+                    descripcion = descripcion[:147] + "..."
+                if not descripcion:
+                    descripcion = "¡Un proyecto interactivo de FNAF directo desde las cocinas de la comunidad!"
                 
-                # 🎨 DISEÑO OSCURO / TERROR PARA DISCORD
+                # Intentamos pescar alguna imagen dentro de la publicación
+                img_match = re.search(r'<media:content[^>]*url="(.*?)"', item) or re.search(r'src="(.*?)"', item)
+                imagen_url = img_match.group(1) if img_match else None
+                
+                # 🎨 DISEÑO TERROR PREMIUM (Rojo Carmesí)
                 embed = {
                     "author": {
-                        "name": f"🐻 FANGAME DESTACADO POR: {desarrollador.upper()}",
-                        "icon_url": "https://i.imgur.com/vH97Z9E.png" # Icono de garra/terror
+                        "name": "🐻 FANGAME DE FNAF DETECTADO",
+                        "icon_url": "https://i.imgur.com/vH97Z9E.png"
                     },
                     "title": titulo,
                     "url": url_juego,
-                    "description": f"*{descripcion}*\n\n¡Ideal para jugar este fin de semana con las luces apagadas! 🔦",
-                    "color": 10038562,  # Rojo carmesí oscuro tipo Fazbear
-                    "image": {"url": resumen} if resumen else None, # Captura del juego en grande
+                    "description": f"*{descripcion}*\n\n🔋 **Estado:** `Transmisión Activa`\n🕹️ **Plataforma:** `Game Jolt`",
+                    "color": 10038562, # Rojo Fazbear oscuro
+                    "image": {"url": imagen_url} if imagen_url else None,
                     "footer": {
-                        "text": "👁️ GORDOBOT FAZBEAR • ARCHIVOS DE LA COMUNIDAD",
+                        "text": "👁️ GORDOBOT FAZBEAR • ARCHIVOS SECRETOS DE LA PIZZERÍA",
                         "icon_url": "https://i.imgur.com/OcMRbT8.png"
                     }
                 }
@@ -58,24 +69,24 @@ def cazar_fangames_fnaf():
                 embeds.append(embed)
                 contador += 1
                 
-                # Con 1 o 2 fangames de calidad cada 3 días es más que suficiente para mantener el hype
+                # Mandamos 2 fangames al azar en cada boletín
                 if contador >= 2:
                     break
             
             if embeds:
                 payload = {
-                    "content": "⚠️ ❗ **【 ALERTA DE NUEVO ARCHIVO: REPORTE FAZBEAR 】** ❗ ⚠️\n*Se han detectado transmisiones de fangames altamente populares en Game Jolt. Proceda con precaución:*",
+                    "content": "⚠️ ❗ **【 ALERTA DE NUEVO ARCHIVO: REPORTE FAZBEAR 】** ❗ ⚠️\n*Nuestros sensores detectaron actividad popular en los servidores de Game Jolt. Proceda bajo su propio riesgo:*",
                     "embeds": embeds
                 }
                 requests.post(URL_DISCORD_FNAF, json=payload)
                 print("¡Reporte Fazbear enviado con éxito a Discord! 🐻🎉")
             else:
-                print("⚠️ No se encontraron fangames disponibles en este momento.")
+                print("⚠️ No se pudieron estructurar tarjetas válidas.")
         else:
-            print(f"❌ No se pudo conectar a Game Jolt. Código: {respuesta.status_code}")
+            print(f"❌ Error de servidor en Game Jolt. Código: {respuesta.status_code}")
             
     except Exception as e:
-        print(f"❌ Error de conexión: {e}")
+        print(f"❌ Error al procesar el feed: {e}")
 
 if __name__ == "__main__":
     cazar_fangames_fnaf()
