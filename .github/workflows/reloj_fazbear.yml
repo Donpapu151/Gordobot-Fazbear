@@ -1,0 +1,27 @@
+name: Alarma Automatica Fazbear
+
+on:
+  schedule:
+    # ⏰ Se ejecuta cada 3 días a las 14:00 UTC (8:00 AM de México del Centro)
+    - cron: '0 14 */3 * *'
+  workflow_dispatch: # Botón manual por si quieres activarlo antes
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clonar el codigo del repositorio
+      uses: actions/checkout@v4
+
+    - name: Configurar Python en el servidor
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Instalar librerias necesarias
+      run: pip install requests
+
+    - name: Ejecutar el Gordobot Fazbear
+      # 🐻 Le indicamos la ruta exacta a tu script de FNAF
+      run: python bot_fnaf.py
