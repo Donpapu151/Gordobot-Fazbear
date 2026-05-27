@@ -1,88 +1,82 @@
 import requests
 import random
-import re
+import xml.etree.ElementTree as ET
 
 # 📊 CONFIGURACIÓN DE TU CANAL:
 URL_DISCORD_FNAF = "https://discord.com/api/webhooks/1509203531184214067/nks3JtSmZgkb7qgH08_nxXYFBOrCiFs_9NxcAAcRTNbCxCvASPgdtEuR-DxtXG5-bc-U"
 
 def cazar_fangames_fnaf():
-    # Usamos la URL de búsqueda directa de itch.io que devuelve los resultados crudos en texto plano
-    url = "https://itch.io/search?q=fnaf&format=json"
+    # Usamos el feed RSS oficial de itch.io para la etiqueta FNAF
+    url = "https://itch.io/games/tag-fnaf.xml"
     
-    print("🔦 Sincronizando radares con la base de datos de Itch.io...")
+    print("🔦 Sincronizando radares con el feed Fazbear de Itch.io...")
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         respuesta = requests.get(url, headers=headers)
         
         if respuesta.status_code == 200:
-            # Conseguimos el texto completo de la página
-            html = respuesta.text
+            # Parseamos el XML estructurado del feed
+            raiz = ET.fromstring(respuesta.content)
             
-            # Recolectamos de forma masiva links de juegos, imágenes y descripciones mediante patrones estables
-            enlaces = re.findall(r'class="game_link" href="([^"]+)"\s*>([^<]+)</a>', html)
-            imagenes = re.findall(r'data-background_image="([^"]+)"', html)
-            descripciones = re.findall(r'class="game_text"[^>]*>([^<]+)</div>', html)
+            # Buscamos todos los elementos <item>
+            items = raiz.findall('.//item')
             
-            if not enlaces:
-                # Intento de respaldo si las clases cambian sutilmente
-                enlaces = re.findall(r'href="(https://[^"]+/games/[^"]+)"', html)
-                if not enlaces:
-                    print("⚠️ Alerta: Los servidores de Itch.io no respondieron con datos legibles.")
-                    return
-            
-            # Armamos la lista unificando las piezas encontradas
-            lista_juegos = []
-            for i in range(min(len(enlaces), 10)):
-                # Manejamos si el patrón capturó tupla o texto individual
-                if isinstance(enlaces[i], tuple):
-                    url_juego = enlaces[i][0]
-                    titulo = enlaces[i][1].strip()
-                else:
-                    url_juego = enlaces[i]
-                    titulo = "Fangame de FNAF"
-                
-                # Asignamos portada y resumen si están disponibles en la tanda
-                img_url = imagenes[i] if i < len(imagenes) else "https://i.imgur.com/u7f3bYV.png"
-                desc = descripciones[i].strip() if i < len(descripciones) else "Un proyecto interactivo inspirado en el universo de Five Nights at Freddy's."
-                
-                # Ignoramos links de perfiles de usuario que se cuelen
-                if "/games/" not in url_juego and not url_juego.split("//")[1].startswith("itch.io"):
-                    lista_juegos.append({
-                        "titulo": titulo if titulo != "Fangame de FNAF" else url_juego.split("/")[-1].replace("-", " ").title(),
-                        "url": url_juego,
-                        "imagen": img_url,
-                        "descripcion": desc
-                    })
-
-            if not lista_juegos:
-                print("⚠️ No se encontraron estructuras limpias de juegos.")
+            if not items:
+                print("⚠️ El servidor respondió, pero el feed venía vacío.")
                 return
-
-            # 🔀 Mezclamos los resultados para asegurar sorpresas cada 3 días
-            random.shuffle(lista_juegos)
+                
+            # 🔀 Mezclamos los juegos para asegurar variedad total
+            random.shuffle(items)
             
             embeds = []
             contador = 0
             
-            for juego in lista_juegos:
+            # Espacios de nombres para extraer imágenes del feed de itch.io
+            ns = {'im': 'http://itch.io/rss'}
+            
+            for item in items:
+                titulo = item.find('title').text if item.find('title') is not None else "Fangame de FNAF"
+                url_juego = item.find('link').text if item.find('link') is not None else "https://itch.io"
+                descripcion_raw = item.find('description').text if item.find('description') is not None else ""
+                
+                # Buscamos la imagen de portada usando el formato nativo del feed de itch
+                imagen_tag = item.find('im:image', ns)
+                imagen_url = imagen_tag.text if imagen_tag is not None else None
+                
+                # Limpieza estética del texto original
+                if descripcion_raw:
+                    import re
+                    descripcion = re.sub(r'<[^>]*>', '', descripcion_raw).strip() # Quita código HTML residual
+                else:
+                    descripcion = ""
+                
+                if not descripcion or len(descripcion) == 0:
+                    descripcion = "Un espeluznante fangame inspirado en las noches de terror de Freddy Fazbear."
+                    
+                if len(descripcion) > 160:
+                    descripcion = descripcion[:157] + "..."
+                
                 # 🎨 DISEÑO TERROR PREMIUM (Rojo Fazbear)
                 embed = {
                     "author": {
                         "name": "🐻 FANGAME DE FNAF DETECTADO",
                         "icon_url": "https://i.imgur.com/vH97Z9E.png"
                     },
-                    "title": juego["titulo"],
-                    "url": juego["url"],
-                    "description": f"*{juego['descripcion']}*\n\n🔋 **Estado:** `Transmisión Activa`\n🕹️ **Plataforma:** `Itch.io`",
-                    "color": 10038562,
-                    "image": {"url": juego["imagen"]} if juego["imagen"] else None,
+                    "title": titulo,
+                    "url": url_juego,
+                    "description": f"*{descripcion}*\n\n🔋 **Estado:** `Transmisión Activa`\n🕹️ **Plataforma:** `Itch.io` (Feed)",
+                    "color": 10038562, # Rojo oscuro
+                    "image": {"url": imagen_url} if imagen_url else None,
                     "footer": {
                         "text": "👁️ GORDOBOT FAZBEAR • ARCHIVOS DE SEGURIDAD",
                         "icon_url": "https://i.imgur.com/OcMRbT8.png"
                     }
                 }
+                
                 embeds.append(embed)
                 contador += 1
+                
+                # Mandamos una dosis doble de juegos sorpresa
                 if contador >= 2:
                     break
             
@@ -92,14 +86,15 @@ def cazar_fangames_fnaf():
                     "embeds": embeds
                 }
                 requests.post(URL_DISCORD_FNAF, json=payload)
-                print("¡Reporte Fazbear enviado con éxito a Discord! 🐻🎉")
+                print("¡Reporte Fazbear enviado con éxito a Discord desde el Feed! 🐻🎉")
             else:
-                print("⚠️ Error al construir las tarjetas de los juegos.")
+                print("⚠️ Error al estructurar las tarjetas.")
+                
         else:
-            print(f"❌ Error de respuesta. Código: {respuesta.status_code}")
+            print(f"❌ Error de conexión con el feed de Itch.io. Código: {respuesta.status_code}")
             
     except Exception as e:
-        print(f"❌ Error crítico en el módulo de búsqueda: {e}")
+        print(f"❌ Error crítico en el parseador XML: {e}")
 
 if __name__ == "__main__":
     cazar_fangames_fnaf()
